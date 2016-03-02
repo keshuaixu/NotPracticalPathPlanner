@@ -20,7 +20,7 @@ B = @(t)B(t);
         for i = 1:length(t)
             M_sym = jacobian(f(x,u,t(i)),w);
             M_sym = subs(M_sym,x,x_traj(t(i)));
-            M(:,:,i) = eval(subs(M_sym,u,u_traj(t(i))))
+            M(:,:,i) = eval(subs(M_sym,u,u_traj(t(i))));
         end
     end
 end

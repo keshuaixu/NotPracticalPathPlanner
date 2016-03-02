@@ -41,8 +41,9 @@ function [t,x]= project_template
 %}
 field = [[0;0] [1000;0] [1000;1000] [0;1000]];
 robot_local = [[-100;-50] [100;-50] [100;50] [-100;50]] ;
-obstacles = cat(3, [[800;0] [1000;0] [1000;200] [800;200]], [[800;800] [1000;800] [1000;1000] [800;1000]]);
-obstacircles = [];
+%obstacles = cat(3, [[800;0] [1000;0] [1000;200] [800;200]], [[800;800] [1000;800] [1000;1000] [800;1000]]);
+
+obstacles = [[900;100;100] [800;200;200] [400;200;200]];
 parameter = assignParameter(field,obstacles,robot_local);
 %% Planner
 
@@ -50,24 +51,23 @@ L = @(x,u,t)(u(1,:).^2+100*u(2,:).^2); %v
 M = @(x,T)(0);
 v_max = 500; % mm/s
 omega_max = 2; % rad/s
-%h = @(x,u)[bsxfun(@minus,abs(u),[v_max;omega_max]);detectCollision(x,parameter)];
-h = @(x,u)[bsxfun(@minus,abs(u),[v_max;omega_max])];
+h = @(x,u)[bsxfun(@minus,abs(u),[v_max;omega_max]);detectCollisionCircles(x,parameter)];
+%h = @(x,u)[bsxfun(@minus,abs(u),[v_max;omega_max])];
 
 %h = @(x,u)[0];
 e = 0.001; % error 
 r = @(x,T) [(x-[900;500;pi/2]).^2 - e];
-
+% try eq cons
 f = @(x,u,t) dynamics(x,u,t,parameter);
 f_ = @(x,u,t) dynamics_(x,u,t,parameter);
 %x_0 = [ 100;100;pi/2 ];
 x_0 = [ 200;150;pi/2 ];
-T = 2;
-N = 2;
+T = 5;
+N = 20;
 
 m = 2; % number of control input
 tic;
 [x,u,t,J] = dirCol(L,M,h,r,f,x_0,m,T,N);
-%[x,u,t,J] = DSS(L,M,h,r,f,x_0,m,T,N);
 toc
 %%
 close all
@@ -84,11 +84,8 @@ plot(t,U)
 figure
 hold on;
 t_previous = -T/N;
-for i = 1:size(parameter.obstacles,3)
-    ob = parameter.obstacles(:,:,i);
-    xv = ob(1,:);
-    yv = ob(2,:);
-    fill(xv,yv,'b');
+for i = 1:size(parameter.obstacles,2)
+
 end    
 axis([0 1000 0 1000]);
 axis equal;
@@ -123,10 +120,15 @@ S = eye(3);
 tic;
 [K,P] = dare(A,B,Q,R,S,T,N);
 toc
+%%
+u_track = @(x_real,t) -K(t)*(x_real - x(t))+u(t);
 
-u = @(x_real,t) -K(t)*(x_real - x(t))+u(t);
+[t,X] = ode45(@(t,x)dynamics(x,u_track(x,t),t),[0 T],x_0 + [0.1;0.1;0.1]);
 
-[t,X] = ode45(@(t,x)dynamics(x,u(x,t),t),[0 T],x_0 + [0.1;0.1;0.1]);
+U = zeros(numel(u(0)),numel(t));
+for i = 1:numel(t)
+    U(:,i) = u_track(X(:,i),t(i));
+end
 
 figure
 subplot(2,1,1); plot(t,X); xlabel('t');ylabel('x');
@@ -157,15 +159,39 @@ f = @(t,x)dynamics(x,u,t,parameter);
 
 % T = 20;
 % x_0 = [ 100;100;pi/2 ];
-[t,x] = ode45(f,[0 T],x_0);
+%[t,x] = ode45(f,[0 T],x_0);
 
 %% visualization
 %{
     You should define how to visualize your result inside a function
     visualization.
 %}
-visualization(x,u,t,parameter);
+%visualization(x,u,t,parameter);
 
+end
+
+%% detect collision with circles
+function [ret] = detectCollisionCircles(x, parameter)
+    % robot_world = mmat(transform2d(x),[parameter.robot_local;ones(1,size(parameter.robot_local,2))]);
+    
+    ob_size = numel(parameter.obstacles(1,:));
+    t_size = size(x,2);
+    ret = zeros(ob_size,t_size);
+    
+    for j = 1:t_size
+        %xq = robot_world(1,:,j)';
+        %yq = robot_world(2,:,j)';  
+        xq = x(1);
+        yq = x(2);
+        
+        for k = 1:ob_size
+            ob = parameter.obstacles(:,k);
+            xob = ob(1);
+            yob = ob(2);
+            rob = ob(3);
+            ret(k,j) = rob^2 - ((xob-xq)^2 + (yob-yq)^2);
+        end
+    end
 end
 
 %% Detect collision
@@ -261,7 +287,6 @@ dx = [cos(theta).*v; sin(theta).*v; omega];
 end
 
 function dx = dynamics_(x,u,t,parameter)
-x
 theta  = x(3);
 v = u(1);
 omega = u(2);

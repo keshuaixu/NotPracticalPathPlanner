@@ -32,7 +32,7 @@ fun = @(w)bolzaDircol(w,L,M,x_0,m,T,N);
 nonlcon = @(w)conDircol(w,x_0,m,T,N,f,r,h);
 
 % solving transformed NLP
-options = optimoptions('fmincon','MaxFunEvals',500000,'UseParallel',1);
+options = optimoptions('fmincon','MaxFunEvals',1000000,'MaxIter',100000,'UseParallel',1);
 [w,J] = fmincon(fun,w_0,[],[],[],[],[],[],nonlcon,options);
 
 % Define the time vector

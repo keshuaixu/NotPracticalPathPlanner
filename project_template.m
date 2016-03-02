@@ -41,8 +41,8 @@ function [t,x]= project_template
 %}
 field = [[0;0] [1000;0] [1000;1000] [0;1000]];
 robot_local = [[-100;-50] [100;-50] [100;50] [-100;50]] ;
-obstacles = cat(3, [[800;0] [1000;0] [1000;200] [800;200]], [[800;800] [1000;800] [1000;1000] [800;1000]]);
-obstacircles = [];
+%obstacles = cat(3, [[800;0] [1000;0] [1000;200] [800;200]], [[800;800] [1000;800] [1000;1000] [800;1000]]);
+obstacles = [[900;100;100] [800;200;200] [400;200;200]];
 parameter = assignParameter(field,obstacles,robot_local);
 %% Planner
 
@@ -50,8 +50,8 @@ L = @(x,u,t)(u(1,:).^2+100*u(2,:).^2); %v
 M = @(x,T)(0);
 v_max = 500; % mm/s
 omega_max = 2; % rad/s
-%h = @(x,u)[bsxfun(@minus,abs(u),[v_max;omega_max]);detectCollision(x,parameter)];
-h = @(x,u)[bsxfun(@minus,abs(u),[v_max;omega_max])];
+h = @(x,u)[bsxfun(@minus,abs(u),[v_max;omega_max]);detectCollisionCircles(x,parameter)];
+%h = @(x,u)[bsxfun(@minus,abs(u),[v_max;omega_max])];
 
 %h = @(x,u)[0];
 e = 0.001; % error 
@@ -62,12 +62,11 @@ f_ = @(x,u,t) dynamics_(x,u,t,parameter);
 %x_0 = [ 100;100;pi/2 ];
 x_0 = [ 200;150;pi/2 ];
 T = 5;
-N = 10;
+N = 20;
 
 m = 2; % number of control input
 tic;
 [x,u,t,J] = dirCol(L,M,h,r,f,x_0,m,T,N);
-%[x,u,t,J] = DSS(L,M,h,r,f,x_0,m,T,N);
 toc
 %%
 close all
@@ -84,11 +83,8 @@ plot(t,U)
 figure
 hold on;
 t_previous = -T/N;
-for i = 1:size(parameter.obstacles,3)
-    ob = parameter.obstacles(:,:,i);
-    xv = ob(1,:);
-    yv = ob(2,:);
-    fill(xv,yv,'b');
+for i = 1:size(parameter.obstacles,2)
+
 end    
 axis([0 1000 0 1000]);
 axis equal;
@@ -124,9 +120,14 @@ tic;
 [K,P] = dare(A,B,Q,R,S,T,N);
 toc
 %%
-u = @(x_real,t) -K(t)*(x_real - x(t))+u(t);
+u_track = @(x_real,t) -K(t)*(x_real - x(t))+u(t);
 
-[t,X] = ode45(@(t,x)dynamics(x,u(x,t),t),[0 T],x_0 + [0.1;0.1;0.1]);
+[t,X] = ode45(@(t,x)dynamics(x,u_track(x,t),t),[0 T],x_0 + [0.1;0.1;0.1]);
+
+U = zeros(numel(u(0)),numel(t));
+for i = 1:numel(t)
+    U(:,i) = u_track(X(:,i),t(i));
+end
 
 figure
 subplot(2,1,1); plot(t,X); xlabel('t');ylabel('x');
@@ -157,15 +158,39 @@ f = @(t,x)dynamics(x,u,t,parameter);
 
 % T = 20;
 % x_0 = [ 100;100;pi/2 ];
-[t,x] = ode45(f,[0 T],x_0);
+%[t,x] = ode45(f,[0 T],x_0);
 
 %% visualization
 %{
     You should define how to visualize your result inside a function
     visualization.
 %}
-visualization(x,u,t,parameter);
+%visualization(x,u,t,parameter);
 
+end
+
+%% detect collision with circles
+function [ret] = detectCollisionCircles(x, parameter)
+    % robot_world = mmat(transform2d(x),[parameter.robot_local;ones(1,size(parameter.robot_local,2))]);
+    
+    ob_size = numel(parameter.obstacles(1,:));
+    t_size = size(x,2);
+    ret = zeros(ob_size,t_size);
+    
+    for j = 1:t_size
+        %xq = robot_world(1,:,j)';
+        %yq = robot_world(2,:,j)';  
+        xq = x(1);
+        yq = x(2);
+        
+        for k = 1:ob_size
+            ob = parameter.obstacles(:,k);
+            xob = ob(1);
+            yob = ob(2);
+            rob = ob(3);
+            ret(k,j) = rob^2 - ((xob-xq)^2 + (yob-yq)^2);
+        end
+    end
 end
 
 %% Detect collision
@@ -266,85 +291,4 @@ v = u(1);
 omega = u(2);
 
 dx = [cos(theta)*v; sin(theta)*v; omega];
-end
-
-
-%% Control Analysis and Contruction Functions
-function control = controlAnalysis(x,t,parameter)
-
-
-end
-
-%% Visualization Functions
-
-function visualization(x,u,t,parameter)
-%{ 
-    You might not need the animation for the simulation. But you definitely
-    need plot for the final result.
-
-    If you want to create an animation, you have to define a drawSystem
-    function, which will be called in each iteration of for-loop.
-%}
-
-%% Animation
-%{
-    This is where the animation loop is defined. If you want an animation
-    in your project, please keep this part. Otherwise, remove the for-loop.
-
-    The actual drawing has to be defined inside drawSystem.
-%}
-step = 1;
-figure(1)
-for i = 1:step:length(t)-step,
-    drawSystem(x(i,:)',parameter);
-    hold off;
-    pause(t(i+step)-t(i));
-end
-
-%% Plots
-%{
-    This is where you plots your results. Each result will be plotted
-    against time (t). Make sure to plot each states individually.
-    If you use indirect method, be sure to plot the costate variables.
-    The most important part is to plot the control input trajectory.
-%}
-figure(2)
-subplot(2,2,1)
-plot(t,x(:,1))
-xlabel('t')
-ylabel('x')
-subplot(2,2,3)
-plot(t,x(:,2))
-xlabel('t')
-ylabel('v')
-
-subplot(2,2,[2 4])
-plot(t,u(x',t))
-xlabel('t')
-ylabel('u')
-end
-function hp = drawSystem(x,parameter)
-%{
-    drawSystem draws a picture of a system at a given snapshot of states (x)
-%}
-[~,~,~,h] = getParameter(parameter);
-hp = cell(1,5);
-d = x(1);
-n = 10;
-spring_x = 0:0.01:(d-h/2);
-spring_y = 0.5*sin(2*pi*n*spring_x/(d-h/2))+h/2;
-hp{1} = plot(spring_x,spring_y,'b','linewidth',2);
-hold on;
-vertices = [d-h/2 d+h/2 d+h/2 d-h/2 d-h/2;...
-            0     0     h     h     0];
-hp{2} = plot(vertices(1,1:2),vertices(2,1:2),'r','linewidth',2);
-hp{3} = plot(vertices(1,2:3),vertices(2,2:3),'r','linewidth',2);
-hp{4} = plot(vertices(1,3:4),vertices(2,3:4),'r','linewidth',2);
-hp{5} = plot(vertices(1,4:5),vertices(2,4:5),'r','linewidth',2);
-hp{6} = plot([-1 10],[0 0],'k');
-hp{7} = plot([0 0],[0 5],'k');
-axis equal;
-xlabel('x [m]')
-ylabel('y [m]')
-title('control the block to reach d = 5 m')
 end

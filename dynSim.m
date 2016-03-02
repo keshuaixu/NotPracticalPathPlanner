@@ -44,7 +44,8 @@ function [xTraj,uTraj,tVector] = dynSim(f,u,x_initial,T,dt)
 N = floor(abs(T/dt));           
 T_f = norm(dt)*N;
 tVector = (T_f-sign(dt)*T_f)/2:dt:(T_f+sign(dt)*T_f)/2; 
-[tVector,xTraj] = ode45(@(t,x)f(t,x,u(x,t)),tVector,x_initial);
+[tVector,xTraj] = ode113(@(t,x)f(t,x,u(x,t)),tVector,x_initial);
+%[tVector,xTraj] = ode15s(@(t,x)f(t,x,u(x,t)),tVector,x_initial);
 tVector = tVector';
 xTraj = xTraj';
 if dt<0
