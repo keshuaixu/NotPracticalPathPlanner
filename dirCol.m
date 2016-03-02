@@ -23,7 +23,7 @@ function [x_traj,u_traj,t,J] = dirCol(L,M,h,r,f,x_0,m,T,N)
 
 % initialize
 n = numel(x_0);
-w_0 = 0.01*ones((n+m)*(N+1) + N,1);
+w_0 = 0.00001*ones((n+m)*(N+1) + N,1);
 
 % defining objective function
 fun = @(w)bolzaDircol(w,L,M,x_0,m,T,N);

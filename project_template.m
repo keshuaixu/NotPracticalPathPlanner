@@ -41,51 +41,66 @@ function [t,x]= project_template
 %}
 field = [[0;0] [1000;0] [1000;1000] [0;1000]];
 robot_local = [[-100;-50] [100;-50] [100;50] [-100;50]] ;
+robot_radius = 112;
 %obstacles = cat(3, [[800;0] [1000;0] [1000;200] [800;200]], [[800;800] [1000;800] [1000;1000] [800;1000]]);
-obstacles = [[900;100;100] [800;200;200] [400;200;200]];
+obstacles_orig = [[900;900;100] [800;200;200] [400;200;100]];
+%obstacles_orig = [[900;900;100] [800;200;200]];
+% inflate the obstacles by radius of the robot
+obstacles = obstacles_orig;
+obstacles(3,:) = obstacles(3,:) + robot_radius;
 parameter = assignParameter(field,obstacles,robot_local);
 %% Planner
 
-L = @(x,u,t)(u(1,:).^2+100*u(2,:).^2); %v
+L = @(x,u,t)(u(1,:).^2+1000*u(2,:).^2); %v
 M = @(x,T)(0);
 v_max = 500; % mm/s
 omega_max = 2; % rad/s
 h = @(x,u)[bsxfun(@minus,abs(u),[v_max;omega_max]);detectCollisionCircles(x,parameter)];
 %h = @(x,u)[bsxfun(@minus,abs(u),[v_max;omega_max])];
-
 %h = @(x,u)[0];
+
+x_0 = [ 100;200;pi/2 ];
+x_T = [900;600;pi/2];
+
+assert(all([detectCollisionCircles(x_0, parameter)]<0),'x_0 collision')
+assert(all([detectCollisionCircles(x_T, parameter)]<0),'x_T collision')
+
 e = 0.001; % error 
-r = @(x,T) [(x-[900;500;pi/2]).^2 - e];
+r = @(x,T) [(x-x_T).^2 - e];
 % try eq cons
 f = @(x,u,t) dynamics(x,u,t,parameter);
 f_ = @(x,u,t) dynamics_(x,u,t,parameter);
 %x_0 = [ 100;100;pi/2 ];
-x_0 = [ 200;150;pi/2 ];
-T = 5;
-N = 20;
+
+T = 3;
+N = 30;
 
 m = 2; % number of control input
 tic;
 [x,u,t,J] = dirCol(L,M,h,r,f,x_0,m,T,N);
 toc
-%%
-close all
-figure;
 X = x(t);
 U = u(t);
-subplot(2,1,1)
-plot(t,X)
-subplot(2,1,2)
-plot(t,U)
+%%
+close all
+figure('Position', [100, 100, 1024, 1200]);
+title('Planned trajectory');
+subplot(4,1,1); plot(t,X(1:2,:)); xlabel('t');ylabel('x,y');
+subplot(4,1,2); plot(t,X(3,:)); xlabel('t');ylabel('theta');
+subplot(4,1,3); plot(t,U(1,:)); xlabel('t');ylabel('v');
+subplot(4,1,4); plot(t,U(2,:)); xlabel('t');ylabel('omega');
+
+saveas(gcf,'planned.png')
 
 %%
 
 figure
 hold on;
 t_previous = -T/N;
-for i = 1:size(parameter.obstacles,2)
-
+for i = 1:size(obstacles_orig,2)
+	drawCircle(obstacles_orig(:,i));
 end    
+plot(X(1),X(2));
 axis([0 1000 0 1000]);
 axis equal;
 for i = 1:size(X,2)
@@ -97,6 +112,7 @@ for i = 1:size(X,2)
     p = fill(xq,yq,'g');
     axis([0 1000 0 1000])
     axis equal
+    saveas(gcf,sprintf('anim-planned%04d.png',i));
     
     pause(t(i)-t_previous);
     t_previous = t(i);
@@ -112,7 +128,6 @@ tic
 [A,B] = linearizeAB(f_,x,u);
 toc
 
-
 Q = @(t)eye(3);
 R = @(t)eye(2);
 S = eye(3);
@@ -122,17 +137,22 @@ toc
 %%
 u_track = @(x_real,t) -K(t)*(x_real - x(t))+u(t);
 
-[t,X] = ode45(@(t,x)dynamics(x,u_track(x,t),t),[0 T],x_0 + [0.1;0.1;0.1]);
+[t_track,X_track] = ode45(@(t,x)dynamics(x,u_track(x,t),t),[0 T],x_0 + [0.1;0.1;0.1]);
+t_track = t_track';
+X_track = X_track';
 
-U = zeros(numel(u(0)),numel(t));
-for i = 1:numel(t)
-    U(:,i) = u_track(X(:,i),t(i));
+U_track = zeros(numel(u(0)),numel(t_track));
+for i = 1:numel(t_track)
+    U_track(:,i) = u_track(X_track(:,i),t_track(i));
 end
 
-figure
-subplot(2,1,1); plot(t,X); xlabel('t');ylabel('x');
-subplot(2,1,2); plot(t,U); xlabel('t');ylabel('u');
-
+figure('Position', [100, 100, 1024, 1200]);
+title('Tracked trajectory');
+subplot(4,1,1); plot(t_track,X_track(1:2,:)); xlabel('t');ylabel('x,y');
+subplot(4,1,2); plot(t_track,X_track(3,:)); xlabel('t');ylabel('theta');
+subplot(4,1,3); plot(t_track,U_track(1,:)); xlabel('t');ylabel('v');
+subplot(4,1,4); plot(t_track,U_track(2,:)); xlabel('t');ylabel('omega');
+saveas(gcf,'tracked.png')
 %% Control Policy
 %{
     Your control policy should be defined inside the function declaration
@@ -171,17 +191,14 @@ end
 
 %% detect collision with circles
 function [ret] = detectCollisionCircles(x, parameter)
-    % robot_world = mmat(transform2d(x),[parameter.robot_local;ones(1,size(parameter.robot_local,2))]);
-    
+   
     ob_size = numel(parameter.obstacles(1,:));
     t_size = size(x,2);
     ret = zeros(ob_size,t_size);
     
     for j = 1:t_size
-        %xq = robot_world(1,:,j)';
-        %yq = robot_world(2,:,j)';  
-        xq = x(1);
-        yq = x(2);
+        xq = x(1,j);
+        yq = x(2,j);
         
         for k = 1:ob_size
             ob = parameter.obstacles(:,k);
@@ -191,50 +208,6 @@ function [ret] = detectCollisionCircles(x, parameter)
             ret(k,j) = rob^2 - ((xob-xq)^2 + (yob-yq)^2);
         end
     end
-end
-
-%% Detect collision
-function [satisfyConstraint] = detectCollision(x, parameter)
-% satisfyConstraint == -1 if good
-    
-    robot_world = mmat(transform2d(x),[parameter.robot_local;ones(1,size(parameter.robot_local,2))]);
-    
-    
-%     xq = robot_world(1,:,:);
-%     xq = permute(xq,[2 1 3]);
-%     yq = robot_world(2,:,:);
-%     yq = permute(yq,[2 1 3]);
-    t_size = size(x,2);
-    xvf = parameter.field(1,:)';
-    yvf = parameter.field(2,:)';
-    obstacle = zeros(1,t_size);
-    field = zeros(1,t_size);
-    satisfyConstraint = zeros(1,t_size);
-    
-    for j = 1:t_size
-        xq = robot_world(1,:,j)';
-        yq = robot_world(2,:,j)';        
-        field(:,j) = numel(xq(inpolygon(xq,yq,xvf,yvf)));
-        obstacleCount = 0;
-        if (field(:,j) == numel(xvf))
-            for i = 1:size(parameter.obstacles,3)
-                ob = parameter.obstacles(:,:,i);
-                xv = ob(1,:);
-                yv = ob(2,:);
-                obstacleCount = obstacleCount + numel(xq(inpolygon(xq,yq,xv,yv))) + numel(xv(inpolygon(xv,yv,xq,yq)));
-            end
-        end
-        
-        obstacle(:,j) = obstacleCount;
-        
-        if (field(:,j) == numel(parameter.robot_local(1,:))) && (obstacle(:,j) == 0)
-            satisfyConstraint(:,j) = -1; % -1 < 0 so it will evaluate true in fmincon
-        else
-            satisfyConstraint(:,j) = 1;
-        end
-        
-    end
-    %satisfyConstraint
 end
 
 %% 2d transformation matrix
@@ -291,4 +264,20 @@ v = u(1);
 omega = u(2);
 
 dx = [cos(theta)*v; sin(theta)*v; omega];
+end
+
+function drawCircle(p)
+%x and y are the coordinates of the center of the circle
+%r is the radius of the circle
+%0.01 is the angle step, bigger values will draw the circle faster but
+%you might notice imperfections (not very smooth)
+%stolen from http://www.mathworks.com/matlabcentral/answers/3058-plotting-circles
+
+    x = p(1);
+    y = p(2);
+    r = p(3);
+    ang=0:0.01:2*pi; 
+    xp=r*cos(ang);
+    yp=r*sin(ang);
+    plot(x+xp,y+yp);
 end
