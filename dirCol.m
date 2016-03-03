@@ -32,7 +32,7 @@ fun = @(w)bolzaDircol(w,L,M,x_0,m,T,N);
 nonlcon = @(w)conDircol(w,x_0,m,T,N,f,r,h);
 
 % solving transformed NLP
-options = optimoptions('fmincon','MaxFunEvals',1000000,'MaxIter',100000,'UseParallel',1);
+options = optimoptions('fmincon','MaxFunEvals',10000000,'MaxIter',1000000,'UseParallel',1,'Algorithm','sqp');
 [w,J] = fmincon(fun,w_0,[],[],[],[],[],[],nonlcon,options);
 
 % Define the time vector
@@ -110,13 +110,15 @@ U_c = getControlTraj(t_c,U,T);
 % Colloction constraint!
 % Terminal contraint! 
 eqCon = [X(:,1) - x_0;
-    reshape(f(P,U_c,t),row*N,1) - reshape(dP,row*N,1)];
+    reshape(f(P,U_c,t),row*N,1) - reshape(dP,row*N,1);
+    r(X(:,end),T)
+    ];
 
 % Inequality constraints
 % Path constraint
 
-inCon = [reshape(h(X, U),size(h(X,U),1)*size(h(X,U),2),1);
-    r(X(:,end),T)];
+inCon = [reshape(h(X, U),size(h(X,U),1)*size(h(X,U),2),1)
+    ];
 % inCon = [];
 
 end

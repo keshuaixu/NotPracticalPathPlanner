@@ -43,7 +43,7 @@ field = [[0;0] [1000;0] [1000;1000] [0;1000]];
 robot_local = [[-100;-50] [100;-50] [100;50] [-100;50]] ;
 robot_radius = 112;
 %obstacles = cat(3, [[800;0] [1000;0] [1000;200] [800;200]], [[800;800] [1000;800] [1000;1000] [800;1000]]);
-obstacles_orig = [[900;900;100] [800;200;200] [400;200;100]];
+obstacles_orig = [[900;900;100] [800;200;200] [400;200;100] [400;600;100]]; %
 %obstacles_orig = [[900;900;100] [800;200;200]];
 % inflate the obstacles by radius of the robot
 obstacles = obstacles_orig;
@@ -51,13 +51,14 @@ obstacles(3,:) = obstacles(3,:) + robot_radius;
 parameter = assignParameter(field,obstacles,robot_local);
 %% Planner
 
-L = @(x,u,t)(u(1,:).^2+1000*u(2,:).^2); %v
+L = @(x,u,t)(u(1,:).^2+10000*u(2,:).^2); %v
 M = @(x,T)(0);
 v_max = 500; % mm/s
 omega_max = 2; % rad/s
-h = @(x,u)[bsxfun(@minus,abs(u),[v_max;omega_max]);detectCollisionCircles(x,parameter)];
+%h = @(x,u)[bsxfun(@minus,u.^2,[v_max;omega_max].^2);detectCollisionCircles(x,parameter)];
 %h = @(x,u)[bsxfun(@minus,abs(u),[v_max;omega_max])];
 %h = @(x,u)[0];
+h = @(x,u)[detectCollisionCircles(x,parameter)];
 
 x_0 = [ 100;200;pi/2 ];
 x_T = [900;600;pi/2];
@@ -66,14 +67,15 @@ assert(all([detectCollisionCircles(x_0, parameter)]<0),'x_0 collision')
 assert(all([detectCollisionCircles(x_T, parameter)]<0),'x_T collision')
 
 e = 0.001; % error 
-r = @(x,T) [(x-x_T).^2 - e];
+%r = @(x,T) [(x(1:2,:)-x_T(1:2,:)).^2 - e; (cos((x(3,:)-x_T(3,:)))-1).^2 - e];
+r = @(x,T) [(x(1:2,:)-x_T(1:2,:)); (cos((x(3,:)-x_T(3,:)))-1)];
+%r = @(x,T) [(x(1:2,:)-x_T(1:2,:))];
 % try eq cons
 f = @(x,u,t) dynamics(x,u,t,parameter);
 f_ = @(x,u,t) dynamics_(x,u,t,parameter);
-%x_0 = [ 100;100;pi/2 ];
 
-T = 3;
-N = 30;
+T = 5;
+N = T*10;
 
 m = 2; % number of control input
 tic;
@@ -100,7 +102,7 @@ t_previous = -T/N;
 for i = 1:size(obstacles_orig,2)
 	drawCircle(obstacles_orig(:,i));
 end    
-plot(X(1),X(2));
+plot(X(1,:),X(2,:));
 axis([0 1000 0 1000]);
 axis equal;
 for i = 1:size(X,2)
